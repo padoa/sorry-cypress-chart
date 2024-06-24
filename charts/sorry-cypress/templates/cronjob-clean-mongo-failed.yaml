@@ -1,0 +1,82 @@
+{{- if .Values.cleanerFailedRuns.enabled }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: clean-failed-mongo-job
+  labels:  {{- include "sorry-cypress-helm.labels" . | nindent 4 }}
+    component: backend-recurrent-task
+    padoa.fr/alert-severity: {{ .Values.cleanerFailedRuns.alert_severity | default "low" }}
+spec:
+  concurrencyPolicy: Forbid
+  schedule: "{{ .Values.cleanerFailedRuns.schedule }}"
+  jobTemplate:
+    metadata:
+      labels: {{- include "sorry-cypress-helm.labels" . | nindent 8 }}
+        component: backend-recurrent-task
+        padoa.fr/alert-severity: {{ .Values.cleanerFailedRuns.alert_severity | default "low" }}
+    spec:
+      backoffLimit: {{ .Values.cleanerFailedRuns.backoff_limit | default 1 }}
+      template:
+        metadata:
+          labels: {{- include "sorry-cypress-helm.labels" . | nindent 12 }}
+            component: backend-recurrent-task
+            padoa.fr/alert-severity: {{ .Values.cleanerFailedRuns.alert_severity | default "low" }}
+        spec:
+          {{- if .Values.nodeSelector }}
+          nodeSelector:
+          {{- toYaml .Values.nodeSelector | nindent 12 }}
+          {{- end }}
+          {{- if .Values.tolerations }}
+          tolerations:
+          {{- toYaml .Values.tolerations| nindent 12 }}
+          {{- end }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+          {{- toYaml . | nindent 12 }}
+          {{- end }}
+          serviceAccountName: {{ include "sorry-cypress-helm.serviceAccountName" . }}
+          securityContext:
+          {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: {{ .Chart.Name }}-clean-mongo-job
+              command: 
+              - /bin/sh
+              - -c
+              - |
+                {{- if .Values.cleanerFailedRuns.dryRun }}
+                echo "[INFO] Mode : Dry run"
+
+                mongo "$MONGODB_URI"/"$MONGODB_DATABASE" --eval 'db.runs.count({"progress.groups.instances.failures" : { $gt : 1 }, "createdAt": { $lte: new Date(ISODate().getTime() - 1000 * 3600 * 24 * "'$RETENTION_DAYS'").toISOString()}})';
+                mongo "$MONGODB_URI"/"$MONGODB_DATABASE" --eval 'db.instances.count({ "results.stats.failures": { $gt: 1 }, "results.stats.wallClockStartedAt": { $lte: new Date(ISODate().getTime() - 1000 * 3600 * 24 * "'$RETENTION_DAYS'").toISOString()} })';
+                echo "[INFO] Fin du dry run"
+                {{- end }}
+
+                {{- if not .Values.cleanerFailedRuns.dryRun }}
+
+                mongo "$MONGODB_URI"/"$MONGODB_DATABASE" --eval 'db.runs.deleteMany({"progress.groups.instances.failures" : { $gt : 1 }, "createdAt": { $lte: new Date(ISODate().getTime() - 1000 * 3600 * 24 * "'$RETENTION_DAYS'").toISOString()}})';
+                mongo "$MONGODB_URI"/"$MONGODB_DATABASE" --eval 'db.instances.deleteMany({ "results.stats.failures": { $gt: 1 }, "results.stats.wallClockStartedAt": { $lte: new Date(ISODate().getTime() - 1000 * 3600 * 24 * "'$RETENTION_DAYS'").toISOString()} })';
+                
+
+                echo "[INFO] Fin de la suppression des runs failed datant de plus de 30j"
+                {{- end }}
+              env:
+                - name: MONGODB_DATABASE
+                  value: "{{ .Values.mongodb.mongoDatabase }}"
+                - name: MONGODB_URI
+                  value: "{{ .Values.mongodb.mongoConnectionString }}"
+                - name: RETENTION_DAYS
+                  value: "{{ .Values.cleanerFailedRuns.retention_days }}"
+              resources:
+                limits:
+                  memory: {{ .Values.cleanerFailedRuns.limit_memory | quote }}
+                  cpu: {{ .Values.cleanerFailedRuns.limit_cpu | quote }}
+                requests:
+                  memory: {{ .Values.cleanerFailedRuns.request_memory | quote }}
+                  cpu: {{ .Values.cleanerFailedRuns.request_cpu | quote }}
+              securityContext:
+              {{- toYaml .Values.securityContext | nindent 16 }}
+              image: "{{ .Values.cleanerFailedRuns.image.repository }}:{{ tpl .Values.cleanerFailedRuns.image.tag . }}"
+              imagePullPolicy: {{ .Values.cleanerFailedRuns.image.pullPolicy }}
+          restartPolicy: OnFailure
+{{end}}

@@ -190,6 +190,9 @@ director:
     # https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html
     #  eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/<IAM_ROLE_NAME>
 
+  # If you have no need for the director service, you can set this to false to exclude it.
+  enabled: true
+
   image:
     repository: agoldis/sorry-cypress-director
     pullPolicy: Always
@@ -299,7 +302,7 @@ director:
 
 mongodb:
   # You need to ensure that director.environmentVariables.executionDriver is set to "../execution/mongo/driver" if you want the director to use mongodb.
-  mongoConnectionString: ""
+  mongoConnectionString: "mongodb://sorry-cypress-mongo.back.padoa"
 
   # One of the following two options must be enabled in order to securely use connection strings
   # that may contain sensitive information. Use either enableSecret or enableCustomSecret, not both.
@@ -410,6 +413,48 @@ runCleaner:
 
   # Name of the existing priority class to be used by pod(s)
   priorityClassName: ""
+
+
+cleanerFailedRuns:
+  enabled: true
+  dryRun: true
+  retention_days: 30
+  alert_severity: low
+  schedule: "0 0 * * *"
+  limit_cpu: "200m"
+  limit_memory: "300Mi"
+  request_cpu: "50m"
+  request_memory: "200Mi"
+  backoff_limit: 20
+  image:
+    repository: mongo
+    tag: '4.4.6'
+    pullPolicy: IfNotPresent
+  service:
+    port: 27017
+
+cleanerSuccessfulRuns:
+  enabled: true
+  dryRun: true
+  retention_days: 7
+  alert_severity: low
+  schedule: "0 0 * * *"
+  limit_cpu: "200m"
+  limit_memory: "300Mi"
+  request_cpu: "50m"
+  request_memory: "200Mi"
+  backoff_limit: 20
+  image:
+    repository: mongo
+    tag: '4.4.6'
+    pullPolicy: IfNotPresent
+  service:
+    port: 27017
+
+serviceAccount:
+  create: false
+  name:
+  
 
 imagePullSecrets: []
 # An optional array of imagePullSecrets that are used to download images from a private registry
