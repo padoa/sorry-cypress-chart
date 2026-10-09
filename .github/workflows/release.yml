@@ -7,6 +7,9 @@ on:
     paths:
       - 'charts/sorry-cypress/Chart.yaml'
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
